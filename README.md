@@ -36,25 +36,20 @@ sudo usermod -aG docker $USER   # lets you run docker without sudo (re-login aft
 
 ## Quick start
 
-1. **Copy this folder to your server**
+1. **Clone the repo onto your server**
 
    ```bash
-   rsync -av community-cloudprint/ user@your-server:/opt/rock-cloudprint/
-   ```
-
-2. **SSH into your server and go to the folder**
-
-   ```bash
+   git clone https://github.com/TheArkChurch/rock-cloud-print-docker.git /opt/rock-cloudprint
    cd /opt/rock-cloudprint
    ```
 
-3. **Open port 8080 in the firewall**
+2. **Open port 8080 in the firewall**
 
    ```bash
    sudo ufw allow 8080/tcp
    ```
 
-4. **Enable auto-start on reboot**
+3. **Enable auto-start on reboot**
 
    ```bash
    sudo bash -c 'cat > /etc/systemd/system/rock-cloudprint.service <<EOF
@@ -80,21 +75,21 @@ sudo usermod -aG docker $USER   # lets you run docker without sudo (re-login aft
 
    > Adjust `WorkingDirectory` if you installed to a different path.
 
-5. **Build and start the container**
+4. **Pull and start the container**
 
    ```bash
-   docker compose up -d --build
+   docker compose up -d
    ```
 
-6. **Open the web UI**
+5. **Open the web UI**
 
    Navigate to `http://<server-ip>:8080` in your browser.
 
-7. **Configure the connection**
+6. **Configure the connection**
 
    Go to the **Settings** tab and enter:
    - **Rock Server URL** — the full URL of your Rock instance, e.g. `https://church.rockrms.com`
-   - **Proxy ID** — the Device IdKey or Guid from Rock's Cloud Print Proxy device record
+   - **Proxy ID** — the Device IdKey from Rock's Cloud Print Proxy device record
    - **Proxy Name** — optional friendly name; defaults to the container hostname
 
    Click **Save & Reconnect**. The Dashboard will show a green "Connected" status within a few seconds.
@@ -249,24 +244,20 @@ No files need to be created inside the dataset — the app creates `appsettings.
 services:
   rock-cloudprint:
     image: asdfinit/rock-cloudprint:latest
-    network_mode: host
+    ports:
+      - "8080:8080"
     volumes:
       - /mnt/tank/rock-cloudprint:/app/config
     restart: unless-stopped
-    # environment:
-    #   - Url=https://origin.church.com
-    #   - Id=da0BJR0Bpz
-    #   - Name=Office Proxy
-    #   - Password=mypin
 ```
 
 > Adjust the host path if your dataset is under a different pool or name.
 
+> **Note:** TrueNAS Apps do not support `network_mode: host`. Port mapping is used instead — the container can still reach LAN printers through the host's network.
+
 ### 3. Configure
 
-Once the app starts, open `http://<truenas-ip>:8080`, go to **Settings**, and fill in your Rock server URL and Proxy ID. Click **Save & Reconnect**.
-
-Settings are written to `/mnt/tank/rock-cloudprint/appsettings.json` on the TrueNAS host and survive container restarts and updates.
+Once the app starts, open `http://<truenas-ip>:8080`, go to **Settings**, fill in your Rock server URL and Proxy ID, and click **Save & Reconnect**. Settings persist in the dataset and survive container updates.
 
 ---
 
@@ -284,11 +275,8 @@ The proxy forwards data to whatever IP:port Rock specifies in the print job.
 ## Common commands
 
 ```bash
-# First-time build + start
-docker compose up -d --build
-
-# Start (after a stop, or after editing docker-compose.yml)
-docker compose up -d
+# Pull latest image and start
+docker compose pull && docker compose up -d
 
 # Restart the container (same as the Restart button in the web UI)
 docker compose restart
@@ -299,11 +287,11 @@ docker compose logs -f
 # Stop
 docker compose down
 
-# Rebuild after a code update
-docker compose up -d --build --force-recreate
-
 # Check container status
 docker compose ps
+
+# Rebuild from source after a code change
+docker compose up -d --build --force-recreate
 ```
 
 ---
@@ -313,8 +301,9 @@ docker compose ps
 When a new version is available:
 
 ```bash
-git pull                              # or copy updated files to the server
-docker compose up -d --build --force-recreate
+git pull
+docker compose pull
+docker compose up -d
 ```
 
 Your settings in `config/appsettings.json` are stored outside the container and are unaffected by updates.

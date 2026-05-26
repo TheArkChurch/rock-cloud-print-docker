@@ -2,7 +2,7 @@
 
 A community-maintained Docker port of the [Rock RMS](https://www.rockrms.com/) Cloud Print proxy service.
 
-The original application is Windows-only. This image runs as a headless Linux container with a browser-based admin UI and is designed to run on any Linux server — including a Raspberry Pi — on the same network as your label printers.
+The original application is Windows-only. This image runs as a headless Linux container with a browser-based admin UI and is designed to run on any Linux server — including a Raspberry Pi or TrueNAS SCALE — on the same network as your label printers.
 
 ```
 Rock RMS Server  ──WebSocket──▶  This container  ──TCP:9100──▶  Local Printer
@@ -12,10 +12,10 @@ Commonly used for Rock Check-in label printing where printers are on a local chu
 
 ---
 
-## Quick start
+## Quick start (Linux server / Raspberry Pi)
 
 ```bash
-# 1. Create a config folder (settings file is written here by the web UI)
+# 1. Create a config folder (settings are written here by the web UI)
 mkdir -p rock-cloudprint/config
 
 # 2. Create docker-compose.yml
@@ -37,13 +37,48 @@ docker compose up -d
 # Navigate to http://<server-ip>:8080
 ```
 
+Open the web UI, go to **Settings**, enter your Rock server URL and Proxy ID, and click **Save & Reconnect**.
+
+---
+
+## TrueNAS SCALE
+
+TrueNAS SCALE 25.10 supports Docker Compose via the **Install via YAML** path in the Apps section.
+
+### 1. Create a dataset
+
+In TrueNAS → **Datasets**, create a new dataset named `rock-cloudprint` under your pool (e.g. `tank/rock-cloudprint`, path `/mnt/tank/rock-cloudprint`).
+
+### 2. Install via YAML
+
+Go to **Apps → Discover → ⋮ (top right) → Install via YAML**, name the app `rock-cloudprint`, and paste:
+
+```yaml
+services:
+  rock-cloudprint:
+    image: asdfinit/rock-cloudprint:latest
+    ports:
+      - "8080:8080"
+    volumes:
+      - /mnt/tank/rock-cloudprint:/app/config
+    restart: unless-stopped
+```
+
+> Adjust the host path if your pool is named differently.
+
+### 3. Configure
+
+Open `http://<truenas-ip>:8080` → **Settings** → enter your Rock server URL and Proxy ID → **Save & Reconnect**.
+
+Settings persist in the dataset and survive container updates.
+
 ---
 
 ## Configuration
 
-Settings can be provided three ways. Environment variables take precedence over the web UI.
+Settings can be provided two ways. Environment variables take precedence over the web UI.
 
-### Web UI (easiest)
+### Web UI (recommended)
 
 Open `http://<server-ip>:8080`, go to **Settings**, and fill in:
 
@@ -63,18 +98,6 @@ environment:
   - Password=mypin        # optional PIN to protect the web UI
 ```
 
-### Config file
-
-Edit `config/appsettings.json` in the host config directory. Changes are detected automatically — no restart needed.
-
-```json
-{
-  "Url": "https://origin.church.com",
-  "Id": "da0BJR0Bpz",
-  "Name": "Office Proxy"
-}
-```
-
 ---
 
 ## PIN / password protection
@@ -90,24 +113,11 @@ Tokens are in-memory only. Users must log in again after a container restart.
 
 ## Networking
 
-This image uses `network_mode: host`. This is required on Linux so the container can open raw TCP connections to printers at their local IP addresses (port 9100). The web UI is then available on the host at port 8080 with no port mapping needed.
+On a standard Linux server this image uses `network_mode: host` so the container can reach printers at their local IP addresses (port 9100) and the web UI is available on port 8080 with no port mapping needed.
 
-> **macOS / Windows Docker Desktop:** Host networking is not supported on these platforms. This image is intended for Linux servers only.
+On **TrueNAS SCALE**, host networking is not available in the Apps system. Use explicit port mapping (`ports: - "8080:8080"`) instead — the container can still reach LAN printers through the host's network.
 
-If your server runs UFW, allow port 8080:
-
-```bash
-sudo ufw allow 8080/tcp
-```
-
----
-
-## Printer addressing
-
-Printers are configured in Rock — not in this app. In Rock's check-in printer settings, set the printer address to the printer's local IP:
-
-- `192.168.1.50` — uses default port 9100
-- `192.168.1.50:9100` — explicit port
+> **macOS / Windows Docker Desktop:** Host networking is not supported. This image is intended for Linux servers only.
 
 ---
 
@@ -123,9 +133,16 @@ Your origin URL is often `https://origin.yourdomain.com` or the direct IP/hostna
 
 ---
 
-## Auto-start on reboot
+## Printer addressing
 
-To ensure the container starts automatically after a server reboot, enable the systemd service (Ubuntu/Debian):
+Printers are configured in Rock — not in this app. In Rock's check-in printer settings, set the printer address to the printer's local IP:
+
+- `192.168.1.50` — uses default port 9100
+- `192.168.1.50:9100` — explicit port
+
+---
+
+## Auto-start on reboot (Linux / Raspberry Pi)
 
 ```bash
 sudo bash -c 'cat > /etc/systemd/system/rock-cloudprint.service <<EOF
@@ -151,6 +168,17 @@ sudo systemctl enable rock-cloudprint
 
 ---
 
+## Updating
+
+```bash
+docker compose pull
+docker compose up -d
+```
+
+Settings are stored in the `config/` directory outside the container and are unaffected by updates.
+
+---
+
 ## Web UI reference
 
 | Tab | Description |
@@ -165,16 +193,17 @@ sudo systemctl enable rock-cloudprint
 ## Useful commands
 
 ```bash
-docker compose up -d --build   # build and start
-docker compose logs -f         # live logs
-docker compose restart         # restart container
-docker compose down            # stop
+docker compose pull          # pull latest image
+docker compose up -d         # start / apply updates
+docker compose logs -f       # live logs
+docker compose restart       # restart container
+docker compose down          # stop
 ```
 
 ---
 
 ## Source
 
-[hub.docker.com/r/asdfinit/rock-cloudprint](https://hub.docker.com/r/asdfinit/rock-cloudprint)
+[github.com/TheArkChurch/rock-cloud-print-docker](https://github.com/TheArkChurch/rock-cloud-print-docker)
 
 Based on [Rock RMS](https://github.com/SparkDevNetwork/Rock) — licensed under the [Rock Community License](http://www.rockrms.com/license).
