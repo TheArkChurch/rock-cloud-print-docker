@@ -1,0 +1,693 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Rock Cloud Print</title>
+    <link rel="icon" type="image/png" href="/icon.png">
+    <link rel="apple-touch-icon" href="/icon.png">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @keyframes pulse-dot { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
+        .pulse { animation: pulse-dot 1.5s ease-in-out infinite; }
+        #log-list { font-family: ui-monospace, 'Cascadia Code', 'Source Code Pro', Menlo, monospace; }
+    </style>
+</head>
+<body class="bg-gray-50 min-h-screen font-sans">
+
+    <!-- ── Login overlay ──────────────────────────────────────────────── -->
+    <div id="login-overlay" class="hidden fixed inset-0 bg-gray-900 z-40 flex flex-col items-center justify-center p-4">
+        <div class="bg-white rounded-xl shadow-2xl w-full max-w-sm p-8">
+            <div class="flex items-center justify-center mb-5">
+                <img src="/icon.png" alt="Rock Cloud Print" class="w-16 h-16">
+            </div>
+            <h2 class="text-xl font-semibold text-gray-900 text-center mb-1">Rock Cloud Print</h2>
+            <p class="text-sm text-gray-500 text-center mb-6">Enter your PIN to continue</p>
+            <input id="login-pin" type="password" placeholder="PIN or password"
+                autocomplete="current-password"
+                class="w-full border border-gray-300 rounded-md px-3 py-2 text-sm
+                       focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                onkeydown="if(event.key==='Enter') doLogin()">
+            <div id="login-error" class="hidden mt-2 text-red-600 text-sm text-center"></div>
+            <button onclick="doLogin()"
+                class="mt-4 w-full bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium
+                       px-4 py-2 rounded-md transition-colors">
+                Unlock
+            </button>
+        </div>
+    </div>
+
+    <!-- ── Restart overlay ────────────────────────────────────────────── -->
+    <div id="restart-overlay" class="hidden fixed inset-0 bg-gray-900/80 z-50 flex flex-col items-center justify-center">
+        <svg class="animate-spin w-10 h-10 text-white mb-4" fill="none" viewBox="0 0 24 24">
+            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"></path>
+        </svg>
+        <p class="text-white text-lg font-medium">Restarting container…</p>
+        <p class="text-gray-400 text-sm mt-1">This usually takes 5–10 seconds.</p>
+    </div>
+
+    <!-- ── Header ─────────────────────────────────────────────────────── -->
+    <header class="bg-white border-b border-gray-200">
+        <div class="max-w-4xl mx-auto px-6 py-4 flex items-center justify-between">
+            <div class="flex items-center space-x-3">
+                <img src="/icon.png" alt="Rock Cloud Print" class="w-8 h-8">
+                <h1 class="text-lg font-semibold text-gray-900">Rock Cloud Print</h1>
+            </div>
+            <div class="flex items-center space-x-2">
+                <button id="logout-btn" onclick="doLogout()"
+                    class="hidden items-center space-x-1.5 text-sm text-gray-500 hover:text-gray-700
+                           transition-colors px-3 py-1.5 rounded-md hover:bg-gray-100
+                           border border-transparent hover:border-gray-200">
+                    <svg class="w-4 h-4 inline-block mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                            d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+                    </svg>
+                    Log out
+                </button>
+                <button onclick="restartService()"
+                    class="flex items-center space-x-1.5 text-sm text-gray-500 hover:text-red-600
+                           transition-colors px-3 py-1.5 rounded-md hover:bg-red-50
+                           border border-transparent hover:border-red-200">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                            d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                    </svg>
+                    <span>Restart</span>
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <!-- ── Tab bar ────────────────────────────────────────────────────── -->
+    <div class="max-w-4xl mx-auto px-6 mt-6">
+        <div class="flex border-b border-gray-200">
+            <button id="tab-dashboard" onclick="showTab('dashboard')"
+                class="tab-btn px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors">
+                Dashboard
+            </button>
+            <button id="tab-logs" onclick="showTab('logs')"
+                class="tab-btn px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ml-2">
+                Logs
+            </button>
+            <button id="tab-settings" onclick="showTab('settings')"
+                class="tab-btn px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ml-2">
+                Settings
+            </button>
+        </div>
+    </div>
+
+    <!-- ── Dashboard ─────────────────────────────────────────────────── -->
+    <div id="pane-dashboard" class="max-w-4xl mx-auto px-6 mt-6 space-y-4">
+
+        <div class="bg-white rounded-lg border border-gray-200 p-5">
+            <div class="flex items-center space-x-3">
+                <span id="status-dot" class="w-3 h-3 rounded-full bg-gray-300 flex-shrink-0"></span>
+                <span id="status-text" class="text-base font-medium text-gray-500">Checking…</span>
+            </div>
+        </div>
+
+        <div id="not-configured-banner"
+            class="hidden bg-blue-50 border border-blue-200 rounded-lg p-4 text-sm text-blue-800">
+            No Rock server is configured. Go to
+            <button onclick="showTab('settings')" class="underline font-medium">Settings</button>
+            to get started.
+        </div>
+
+        <div id="stats-grid" class="hidden grid grid-cols-3 gap-4">
+            <div class="bg-white rounded-lg border border-gray-200 p-4">
+                <p class="text-xs font-medium text-gray-400 uppercase tracking-wide">Started</p>
+                <p id="started-time" class="mt-1 text-sm font-semibold text-gray-800 tabular-nums">—</p>
+            </div>
+            <div class="bg-white rounded-lg border border-gray-200 p-4">
+                <p class="text-xs font-medium text-gray-400 uppercase tracking-wide">Connected Since</p>
+                <p id="connected-since" class="mt-1 text-sm font-semibold text-gray-800 tabular-nums">—</p>
+            </div>
+            <div class="bg-white rounded-lg border border-gray-200 p-4">
+                <p class="text-xs font-medium text-gray-400 uppercase tracking-wide">Labels Printed</p>
+                <p id="labels-count" class="mt-1 text-2xl font-bold text-gray-900 tabular-nums">0</p>
+            </div>
+        </div>
+
+    </div>
+
+    <!-- ── Logs ──────────────────────────────────────────────────────── -->
+    <div id="pane-logs" class="hidden max-w-4xl mx-auto px-6 mt-6">
+        <div class="bg-gray-900 rounded-lg border border-gray-700 overflow-hidden">
+
+            <!-- Toolbar -->
+            <div class="flex items-center justify-between px-4 py-2 border-b border-gray-700 bg-gray-800">
+                <span class="text-xs text-gray-400 font-medium uppercase tracking-wide">Service Log</span>
+                <div class="flex items-center space-x-3">
+                    <label class="flex items-center space-x-1.5 cursor-pointer select-none">
+                        <input type="checkbox" id="log-autoscroll" checked
+                            class="w-3.5 h-3.5 rounded accent-blue-500">
+                        <span class="text-xs text-gray-400">Auto-scroll</span>
+                    </label>
+                    <button onclick="clearLogs()"
+                        class="text-xs text-gray-500 hover:text-gray-300 transition-colors">
+                        Clear
+                    </button>
+                </div>
+            </div>
+
+            <!-- Log entries -->
+            <div id="log-container" class="h-96 overflow-y-auto p-3">
+                <div id="log-list"></div>
+                <div id="log-empty" class="text-gray-600 text-xs py-2">No log entries yet.</div>
+            </div>
+
+        </div>
+    </div>
+
+    <!-- ── Settings ──────────────────────────────────────────────────── -->
+    <div id="pane-settings" class="hidden max-w-4xl mx-auto px-6 mt-6 pb-12 space-y-4">
+
+        <!-- Connection -->
+        <div class="bg-white rounded-lg border border-gray-200 p-6 space-y-5">
+            <h2 class="text-xs font-semibold text-gray-500 uppercase tracking-wider">Connection</h2>
+
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Rock Server URL</label>
+                <input id="setting-url" type="url" placeholder="https://origin.church.com"
+                    class="w-full border border-gray-300 rounded-md px-3 py-2 text-sm
+                           focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent" />
+            </div>
+
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Proxy ID</label>
+                <p class="text-xs text-gray-400 mb-1">The Device IdKey from Rock's Cloud Print Proxy device record.</p>
+                <input id="setting-id" type="text" placeholder="da0BJR0Bpz"
+                    class="w-full border border-gray-300 rounded-md px-3 py-2 text-sm
+                           focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent" />
+            </div>
+
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">
+                    Proxy Name <span class="text-gray-400 font-normal">(optional)</span>
+                </label>
+                <p class="text-xs text-gray-400 mb-1">Defaults to the container hostname if left blank.</p>
+                <input id="setting-name" type="text" placeholder="Office Printer Proxy"
+                    class="w-full border border-gray-300 rounded-md px-3 py-2 text-sm
+                           focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent" />
+            </div>
+
+            <div id="save-message" class="hidden"></div>
+
+            <div class="flex items-center justify-between pt-2 border-t border-gray-100">
+                <button onclick="saveSettings()"
+                    class="bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium
+                           px-4 py-2 rounded-md transition-colors">
+                    Save &amp; Reconnect
+                </button>
+                <p class="text-xs text-gray-400">
+                    Env vars <code class="bg-gray-100 px-1 rounded">Url</code>,
+                    <code class="bg-gray-100 px-1 rounded">Id</code>,
+                    <code class="bg-gray-100 px-1 rounded">Name</code> override file settings.
+                </p>
+            </div>
+        </div>
+
+        <!-- Security -->
+        <div class="bg-white rounded-lg border border-gray-200 p-6 space-y-4">
+            <h2 class="text-xs font-semibold text-gray-500 uppercase tracking-wider">Security</h2>
+
+            <!-- Env-var notice (PIN locked by docker-compose) -->
+            <div id="pin-envvar-notice" class="hidden bg-yellow-50 border border-yellow-200 rounded-md p-3 text-sm text-yellow-800">
+                <strong>PIN is set via environment variable.</strong> To change or remove it, update the
+                <code class="bg-yellow-100 px-1 rounded text-xs">Password</code> variable in your
+                <code class="bg-yellow-100 px-1 rounded text-xs">docker-compose.yml</code> and restart the container.
+            </div>
+
+            <!-- No PIN set yet -->
+            <div id="pin-not-set" class="hidden space-y-3">
+                <p class="text-sm text-gray-500">
+                    No PIN is set. Anyone who can reach this page has full access.
+                    Optionally set a PIN to require a login prompt.
+                </p>
+                <div class="grid grid-cols-2 gap-3">
+                    <div>
+                        <label class="block text-xs font-medium text-gray-600 mb-1">New PIN</label>
+                        <input id="new-pin" type="password" placeholder="PIN or password"
+                            autocomplete="new-password"
+                            class="w-full border border-gray-300 rounded-md px-3 py-2 text-sm
+                                   focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                    </div>
+                    <div>
+                        <label class="block text-xs font-medium text-gray-600 mb-1">Confirm PIN</label>
+                        <input id="confirm-pin" type="password" placeholder="Confirm"
+                            autocomplete="new-password"
+                            class="w-full border border-gray-300 rounded-md px-3 py-2 text-sm
+                                   focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                    </div>
+                </div>
+                <div id="pin-msg-set" class="hidden"></div>
+                <button onclick="savePin()"
+                    class="bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium
+                           px-4 py-2 rounded-md transition-colors">
+                    Set PIN
+                </button>
+            </div>
+
+            <!-- PIN already set — change or remove -->
+            <div id="pin-is-set" class="hidden space-y-3">
+                <p class="text-sm text-gray-500">
+                    PIN protection is enabled. Enter your current PIN to change or remove it.
+                    Leave <em>New PIN</em> blank to remove protection.
+                </p>
+                <div class="grid grid-cols-3 gap-3">
+                    <div>
+                        <label class="block text-xs font-medium text-gray-600 mb-1">Current PIN</label>
+                        <input id="current-pin" type="password" placeholder="Current"
+                            autocomplete="current-password"
+                            class="w-full border border-gray-300 rounded-md px-3 py-2 text-sm
+                                   focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                    </div>
+                    <div>
+                        <label class="block text-xs font-medium text-gray-600 mb-1">New PIN</label>
+                        <input id="change-pin-new" type="password" placeholder="New (blank = remove)"
+                            autocomplete="new-password"
+                            class="w-full border border-gray-300 rounded-md px-3 py-2 text-sm
+                                   focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                    </div>
+                    <div>
+                        <label class="block text-xs font-medium text-gray-600 mb-1">Confirm</label>
+                        <input id="change-pin-confirm" type="password" placeholder="Confirm new"
+                            autocomplete="new-password"
+                            class="w-full border border-gray-300 rounded-md px-3 py-2 text-sm
+                                   focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                    </div>
+                </div>
+                <div id="pin-msg-change" class="hidden"></div>
+                <button onclick="changePin()"
+                    class="bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium
+                           px-4 py-2 rounded-md transition-colors">
+                    Update PIN
+                </button>
+            </div>
+        </div>
+
+    </div>
+
+    <script>
+        // ── Auth state ────────────────────────────────────────────────────
+        let authToken     = localStorage.getItem( 'rock-cp-token' ) || '';
+        let authRequired  = false;
+        let appInitialized = false;
+
+        // Wraps fetch() with the bearer token. On 401 clears the token and
+        // shows the login overlay; the thrown error lets callers bail out.
+        async function authFetch( url, opts = {} ) {
+            const headers = { ...(opts.headers || {}) };
+            if ( authToken ) headers['Authorization'] = 'Bearer ' + authToken;
+            const resp = await fetch( url, { ...opts, headers } );
+            if ( resp.status === 401 ) {
+                authToken = '';
+                localStorage.removeItem( 'rock-cp-token' );
+                showLoginOverlay();
+                throw new Error( 'Unauthorized' );
+            }
+            return resp;
+        }
+
+        function showLoginOverlay() {
+            document.getElementById( 'login-overlay' ).classList.remove( 'hidden' );
+            document.getElementById( 'login-error' ).classList.add( 'hidden' );
+            document.getElementById( 'login-pin' ).value = '';
+            setTimeout( () => document.getElementById( 'login-pin' ).focus(), 50 );
+        }
+
+        function hideLoginOverlay() {
+            document.getElementById( 'login-overlay' ).classList.add( 'hidden' );
+        }
+
+        async function doLogin() {
+            const pin   = document.getElementById( 'login-pin' ).value;
+            const errEl = document.getElementById( 'login-error' );
+            errEl.classList.add( 'hidden' );
+
+            try {
+                const resp = await fetch( '/api/auth/login', {
+                    method:  'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body:    JSON.stringify( { password: pin } )
+                } );
+
+                if ( resp.status === 401 ) {
+                    errEl.textContent = 'Incorrect PIN. Please try again.';
+                    errEl.classList.remove( 'hidden' );
+                    document.getElementById( 'login-pin' ).value = '';
+                    document.getElementById( 'login-pin' ).focus();
+                    return;
+                }
+
+                const data = await resp.json();
+                authToken = data.token || '';
+                if ( authToken ) localStorage.setItem( 'rock-cp-token', authToken );
+                hideLoginOverlay();
+                document.getElementById( 'logout-btn' ).classList.remove( 'hidden' );
+
+                if ( !appInitialized ) {
+                    initApp();
+                }
+                // If already initialized, the running intervals resume automatically.
+            } catch ( err ) {
+                errEl.textContent = 'Error: ' + escHtml( err.message );
+                errEl.classList.remove( 'hidden' );
+            }
+        }
+
+        async function doLogout() {
+            try {
+                const headers = authToken ? { 'Authorization': 'Bearer ' + authToken } : {};
+                await fetch( '/api/auth/logout', { method: 'POST', headers } );
+            } catch ( _ ) {}
+            authToken = '';
+            localStorage.removeItem( 'rock-cp-token' );
+            showLoginOverlay();
+        }
+
+        // ── Boot ──────────────────────────────────────────────────────────
+        async function boot() {
+            try {
+                const resp = await fetch( '/api/auth/config' );
+                const cfg  = await resp.json();
+                authRequired = cfg.required;
+            } catch ( _ ) {}
+
+            document.getElementById( 'logout-btn' ).classList.toggle( 'hidden', !authRequired );
+
+            if ( authRequired && !authToken ) {
+                showLoginOverlay();
+                return; // initApp() will be called after successful login
+            }
+
+            initApp();
+        }
+
+        function initApp() {
+            appInitialized = true;
+            showTab( 'dashboard' );
+            refreshStatus();
+            setInterval( refreshStatus, 2000 );
+            setInterval( () => {
+                if ( !document.getElementById( 'pane-logs' ).classList.contains( 'hidden' ) ) {
+                    refreshLogs();
+                }
+            }, 3000 );
+        }
+
+        // ── Tab management ────────────────────────────────────────────────
+        function showTab( tab ) {
+            ['dashboard', 'logs', 'settings'].forEach( t => {
+                const btn   = document.getElementById( 'tab-' + t );
+                const pane  = document.getElementById( 'pane-' + t );
+                const active = t === tab;
+                btn.classList.toggle( 'border-blue-600',   active );
+                btn.classList.toggle( 'text-blue-600',     active );
+                btn.classList.toggle( 'border-transparent', !active );
+                btn.classList.toggle( 'text-gray-500',     !active );
+                pane.classList.toggle( 'hidden', !active );
+            } );
+            if ( tab === 'settings' ) { loadSettings(); loadSecuritySection(); }
+            if ( tab === 'logs'     ) { refreshLogs(); }
+        }
+
+        // ── Status polling ────────────────────────────────────────────────
+        function fmtDate( iso ) {
+            if ( !iso ) return '—';
+            return new Date( iso ).toLocaleString( undefined, {
+                month: 'short', day: 'numeric',
+                hour: '2-digit', minute: '2-digit', second: '2-digit'
+            } );
+        }
+
+        async function refreshStatus() {
+            try {
+                const resp = await authFetch( '/api/status' );
+                if ( !resp.ok ) return;
+                const d = await resp.json();
+
+                const dot    = document.getElementById( 'status-dot' );
+                const text   = document.getElementById( 'status-text' );
+                const banner = document.getElementById( 'not-configured-banner' );
+                const stats  = document.getElementById( 'stats-grid' );
+
+                if ( d.isConnected ) {
+                    dot.className    = 'w-3 h-3 rounded-full bg-green-500 flex-shrink-0';
+                    text.textContent = 'Connected to Rock server';
+                    text.className   = 'text-base font-medium text-green-700';
+                    stats.classList.remove( 'hidden' );
+                    banner.classList.add( 'hidden' );
+                    document.getElementById( 'started-time'    ).textContent = fmtDate( d.startedDateTime );
+                    document.getElementById( 'connected-since' ).textContent = fmtDate( d.connectedDateTime );
+                    document.getElementById( 'labels-count'    ).textContent = (d.totalLabelsPrinted || 0).toLocaleString();
+                } else if ( !d.isConfigured ) {
+                    dot.className    = 'w-3 h-3 rounded-full bg-gray-300 flex-shrink-0';
+                    text.textContent = 'Not configured';
+                    text.className   = 'text-base font-medium text-gray-500';
+                    stats.classList.add( 'hidden' );
+                    banner.classList.remove( 'hidden' );
+                } else {
+                    dot.className    = 'w-3 h-3 rounded-full bg-yellow-400 flex-shrink-0 pulse';
+                    text.textContent = 'Connecting to Rock server…';
+                    text.className   = 'text-base font-medium text-yellow-700';
+                    stats.classList.add( 'hidden' );
+                    banner.classList.add( 'hidden' );
+                }
+            } catch ( _ ) {}
+        }
+
+        // ── Logs ──────────────────────────────────────────────────────────
+        const LEVEL_COLORS = {
+            Critical:    'text-red-400',
+            Error:       'text-red-400',
+            Warning:     'text-yellow-400',
+            Information: 'text-gray-100',
+            Debug:       'text-gray-500',
+            Trace:       'text-gray-600',
+        };
+
+        let displayedCount = 0;
+
+        async function refreshLogs() {
+            try {
+                const resp    = await authFetch( '/api/logs' );
+                if ( !resp.ok ) return;
+                const entries = await resp.json();
+
+                const list      = document.getElementById( 'log-list' );
+                const empty     = document.getElementById( 'log-empty' );
+                const container = document.getElementById( 'log-container' );
+
+                if ( entries.length === 0 ) {
+                    empty.classList.remove( 'hidden' );
+                    return;
+                }
+                empty.classList.add( 'hidden' );
+
+                if ( entries.length > displayedCount ) {
+                    const atBottom = container.scrollTop + container.clientHeight >= container.scrollHeight - 60;
+
+                    entries.slice( displayedCount ).forEach( e => {
+                        const color = LEVEL_COLORS[e.level] || 'text-gray-300';
+                        const ts    = new Date( e.timestamp ).toLocaleTimeString( undefined, { hour12: false } );
+                        const lvl   = (e.level || '').substring( 0, 4 ).toUpperCase();
+                        const row   = document.createElement( 'div' );
+                        row.className = 'flex text-xs leading-5 ' + color;
+                        row.innerHTML =
+                            '<span class="text-gray-600 w-20 flex-shrink-0">'  + ts                     + '</span>' +
+                            '<span class="w-10 flex-shrink-0">'                + lvl                    + '</span>' +
+                            '<span class="text-blue-500 w-36 flex-shrink-0 truncate mr-2">' + escHtml( e.category ) + '</span>' +
+                            '<span class="flex-1 break-all">'                  + escHtml( e.message )   + '</span>';
+                        list.appendChild( row );
+                    } );
+
+                    displayedCount = entries.length;
+
+                    if ( document.getElementById( 'log-autoscroll' ).checked && atBottom ) {
+                        container.scrollTop = container.scrollHeight;
+                    }
+                }
+            } catch ( _ ) {}
+        }
+
+        function clearLogs() {
+            document.getElementById( 'log-list'  ).innerHTML = '';
+            document.getElementById( 'log-empty' ).classList.remove( 'hidden' );
+            displayedCount = 0;
+        }
+
+        function escHtml( str ) {
+            return (str || '').replace( /&/g, '&amp;' ).replace( /</g, '&lt;' ).replace( />/g, '&gt;' );
+        }
+
+        // ── Settings — connection ─────────────────────────────────────────
+        async function loadSettings() {
+            try {
+                const resp = await authFetch( '/api/settings' );
+                const d    = await resp.json();
+                document.getElementById( 'setting-url'  ).value = d.url  || '';
+                document.getElementById( 'setting-id'   ).value = d.id   || '';
+                document.getElementById( 'setting-name' ).value = d.name || '';
+            } catch ( _ ) {}
+        }
+
+        async function saveSettings() {
+            const url  = document.getElementById( 'setting-url'  ).value.trim();
+            const id   = document.getElementById( 'setting-id'   ).value.trim();
+            const name = document.getElementById( 'setting-name' ).value.trim();
+            const msg  = document.getElementById( 'save-message' );
+            try {
+                const resp = await authFetch( '/api/settings', {
+                    method:  'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body:    JSON.stringify( { url, name, id } )
+                } );
+                if ( resp.ok ) {
+                    msg.innerHTML = '<div class="text-green-700 bg-green-50 border border-green-200 rounded px-3 py-2 text-sm">Settings saved. Reconnecting…</div>';
+                    msg.classList.remove( 'hidden' );
+                    setTimeout( () => { msg.classList.add( 'hidden' ); showTab( 'dashboard' ); }, 2000 );
+                } else {
+                    msg.innerHTML = '<div class="text-red-700 bg-red-50 border border-red-200 rounded px-3 py-2 text-sm">Save failed (HTTP ' + resp.status + ').</div>';
+                    msg.classList.remove( 'hidden' );
+                }
+            } catch ( err ) {
+                if ( err.message !== 'Unauthorized' ) {
+                    msg.innerHTML = '<div class="text-red-700 bg-red-50 border border-red-200 rounded px-3 py-2 text-sm">Error: ' + escHtml( err.message ) + '</div>';
+                    msg.classList.remove( 'hidden' );
+                }
+            }
+        }
+
+        // ── Settings — security / PIN ─────────────────────────────────────
+        async function loadSecuritySection() {
+            try {
+                const resp = await fetch( '/api/auth/config' );
+                const cfg  = await resp.json();
+
+                document.getElementById( 'pin-envvar-notice' ).classList.toggle( 'hidden', !cfg.fromEnvVar );
+                document.getElementById( 'pin-not-set'       ).classList.toggle( 'hidden', cfg.required || cfg.fromEnvVar );
+                document.getElementById( 'pin-is-set'        ).classList.toggle( 'hidden', !cfg.required || cfg.fromEnvVar );
+
+                // Clear stale input values and messages.
+                ['new-pin','confirm-pin','current-pin','change-pin-new','change-pin-confirm'].forEach( id => {
+                    const el = document.getElementById( id );
+                    if ( el ) el.value = '';
+                } );
+                ['pin-msg-set','pin-msg-change'].forEach( id =>
+                    document.getElementById( id ).classList.add( 'hidden' ) );
+            } catch ( _ ) {}
+        }
+
+        function showPinMsg( elId, type, text ) {
+            const el  = document.getElementById( elId );
+            const cls = type === 'error'
+                ? 'text-red-700 bg-red-50 border border-red-200'
+                : 'text-green-700 bg-green-50 border border-green-200';
+            el.innerHTML = '<div class="' + cls + ' rounded px-3 py-2 text-sm">' + escHtml( text ) + '</div>';
+            el.classList.remove( 'hidden' );
+        }
+
+        async function savePin() {
+            const newPin = document.getElementById( 'new-pin'     ).value;
+            const confirm = document.getElementById( 'confirm-pin' ).value;
+            if ( !newPin )            { showPinMsg( 'pin-msg-set', 'error', 'Please enter a PIN.' );   return; }
+            if ( newPin !== confirm ) { showPinMsg( 'pin-msg-set', 'error', 'PINs do not match.' );    return; }
+
+            try {
+                const resp = await authFetch( '/api/settings/security', {
+                    method:  'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body:    JSON.stringify( { currentPassword: null, newPassword: newPin } )
+                } );
+                if ( resp.ok ) {
+                    // PIN just set — force login with the new PIN.
+                    authToken    = '';
+                    authRequired = true;
+                    localStorage.removeItem( 'rock-cp-token' );
+                    document.getElementById( 'logout-btn' ).classList.remove( 'hidden' );
+                    showLoginOverlay();
+                } else {
+                    const d = await resp.json().catch( () => ({}) );
+                    showPinMsg( 'pin-msg-set', 'error', d.error || 'Failed to set PIN.' );
+                }
+            } catch ( err ) {
+                if ( err.message !== 'Unauthorized' )
+                    showPinMsg( 'pin-msg-set', 'error', 'Error: ' + escHtml( err.message ) );
+            }
+        }
+
+        async function changePin() {
+            const current = document.getElementById( 'current-pin'      ).value;
+            const newPin  = document.getElementById( 'change-pin-new'   ).value;
+            const confirm = document.getElementById( 'change-pin-confirm' ).value;
+            if ( newPin && newPin !== confirm ) {
+                showPinMsg( 'pin-msg-change', 'error', 'New PINs do not match.' );
+                return;
+            }
+
+            try {
+                const resp = await authFetch( '/api/settings/security', {
+                    method:  'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body:    JSON.stringify( { currentPassword: current, newPassword: newPin } )
+                } );
+                if ( resp.ok ) {
+                    if ( !newPin ) {
+                        // PIN removed — no longer required.
+                        authToken    = '';
+                        authRequired = false;
+                        localStorage.removeItem( 'rock-cp-token' );
+                        document.getElementById( 'logout-btn' ).classList.add( 'hidden' );
+                        showPinMsg( 'pin-msg-change', 'success', 'PIN removed. Protection is now disabled.' );
+                        loadSecuritySection();
+                    } else {
+                        // PIN changed — all sessions invalidated, must re-login.
+                        authToken = '';
+                        localStorage.removeItem( 'rock-cp-token' );
+                        showLoginOverlay();
+                    }
+                } else {
+                    const d = await resp.json().catch( () => ({}) );
+                    showPinMsg( 'pin-msg-change', 'error', d.error || 'Failed to update PIN.' );
+                }
+            } catch ( err ) {
+                if ( err.message !== 'Unauthorized' )
+                    showPinMsg( 'pin-msg-change', 'error', 'Error: ' + escHtml( err.message ) );
+            }
+        }
+
+        // ── Restart ───────────────────────────────────────────────────────
+        async function restartService() {
+            const note = authRequired
+                ? '\n\nYou will need to log in again after the restart.'
+                : '\n\nThe page will reload automatically.';
+            if ( !confirm( 'Restart the proxy container?' + note ) ) return;
+
+            document.getElementById( 'restart-overlay' ).classList.remove( 'hidden' );
+
+            // Trigger the restart. The server may close the socket before the
+            // response completes — that is expected and harmless.
+            try {
+                const headers = authToken ? { 'Authorization': 'Bearer ' + authToken } : {};
+                await fetch( '/api/restart', { method: 'POST', headers } );
+            } catch ( _ ) {}
+
+            // Poll the public config endpoint (no auth required) until the
+            // server comes back, then do a full page reload to re-init auth.
+            for ( let i = 0; i < 40; i++ ) {
+                await new Promise( r => setTimeout( r, 1000 ) );
+                try {
+                    const r = await fetch( '/api/auth/config' );
+                    if ( r.ok ) { window.location.reload(); return; }
+                } catch ( _ ) {}
+            }
+            window.location.reload();
+        }
+
+        // ── Start ─────────────────────────────────────────────────────────
+        boot();
+    </script>
+</body>
+</html>

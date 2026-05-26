@@ -1,0 +1,22 @@
+services:
+  rock-cloudprint:
+    image: asdfinit/rock-cloudprint:latest
+    build:
+      context: .
+      dockerfile: Dockerfile
+    # Host networking lets the container reach local printers at their raw IPs
+    # (port 9100). The web UI is then available at http://<server-ip>:8080.
+    network_mode: host
+    volumes:
+      # Mount the config directory so settings persist across container restarts.
+      # Using a directory mount (not a file mount) keeps TrueNAS and other
+      # environments that only support dataset/directory mounts compatible.
+      - ./config:/app/config
+    restart: unless-stopped
+    # Alternatively, supply settings entirely via environment variables
+    # (these override anything written via the web UI):
+    # environment:
+    #   - Url=https://church.rockrms.com
+    #   - Id=da0BJR0Bpz
+    #   - Name=Office Proxy
+    #   - Password=mypin          # optional — locks the web UI behind a PIN

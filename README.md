@@ -1,0 +1,388 @@
+# Rock Cloud Print — Docker Edition
+
+A community-maintained Docker port of the [Rock RMS](https://www.rockrms.com/) Cloud Print proxy service. The original application is a Windows-only desktop app; this version runs as a headless Linux container with a browser-based admin UI.
+
+---
+
+## What it does
+
+Rock Cloud Print is a lightweight proxy that bridges your Rock RMS server and local network printers. Rock sends print jobs (typically ZPL label data) over a WebSocket connection to this proxy, which forwards them as raw TCP data to the printer on your local network — usually on port 9100.
+
+```
+Rock RMS Server  ──WebSocket──▶  This container  ──TCP:9100──▶  Local Printer
+```
+
+This is commonly used for check-in label printing where the printers are on a local church network but the Rock server is cloud-hosted.
+
+---
+
+## Prerequisites
+
+- A Linux server (Ubuntu 22.04+ recommended) on the same network as your printers
+- [Docker](https://docs.docker.com/engine/install/ubuntu/) and the Compose plugin installed
+- A Rock RMS server (v17+) with a Cloud Print Proxy device record configured
+- The printer must be reachable from the server by IP address on port 9100
+
+### Install Docker on Ubuntu
+
+```bash
+sudo apt-get update
+sudo apt-get install -y docker.io docker-compose-plugin
+sudo systemctl enable --now docker
+sudo usermod -aG docker $USER   # lets you run docker without sudo (re-login after)
+```
+
+---
+
+## Quick start
+
+1. **Copy this folder to your server**
+
+   ```bash
+   rsync -av community-cloudprint/ user@your-server:/opt/rock-cloudprint/
+   ```
+
+2. **SSH into your server and go to the folder**
+
+   ```bash
+   cd /opt/rock-cloudprint
+   ```
+
+3. **Open port 8080 in the firewall**
+
+   ```bash
+   sudo ufw allow 8080/tcp
+   ```
+
+4. **Enable auto-start on reboot**
+
+   ```bash
+   sudo bash -c 'cat > /etc/systemd/system/rock-cloudprint.service <<EOF
+   [Unit]
+   Description=Rock Cloud Print Proxy
+   After=docker.service
+   Requires=docker.service
+
+   [Service]
+   Type=oneshot
+   RemainAfterExit=yes
+   WorkingDirectory=/opt/rock-cloudprint
+   ExecStart=/usr/bin/docker compose up -d
+   ExecStop=/usr/bin/docker compose down
+   TimeoutStartSec=300
+
+   [Install]
+   WantedBy=multi-user.target
+   EOF'
+   sudo systemctl daemon-reload
+   sudo systemctl enable rock-cloudprint
+   ```
+
+   > Adjust `WorkingDirectory` if you installed to a different path.
+
+5. **Build and start the container**
+
+   ```bash
+   docker compose up -d --build
+   ```
+
+6. **Open the web UI**
+
+   Navigate to `http://<server-ip>:8080` in your browser.
+
+7. **Configure the connection**
+
+   Go to the **Settings** tab and enter:
+   - **Rock Server URL** — the full URL of your Rock instance, e.g. `https://church.rockrms.com`
+   - **Proxy ID** — the Device IdKey or Guid from Rock's Cloud Print Proxy device record
+   - **Proxy Name** — optional friendly name; defaults to the container hostname
+
+   Click **Save & Reconnect**. The Dashboard will show a green "Connected" status within a few seconds.
+
+---
+
+## Configuration
+
+Settings can be provided two ways. Environment variables take precedence over the web UI.
+
+### Option A — Web UI (recommended for most users)
+
+Use the Settings tab in the browser. Settings are written to `config/appsettings.json` on the host and persist across container restarts via the `./config:/app/config` Docker volume mount.
+
+### Option B — Environment variables
+
+Edit `docker-compose.yml` and uncomment the `environment` block:
+
+```yaml
+environment:
+  - Url=https://church.rockrms.com
+  - Id=da0BJR0Bpz
+  - Name=Office Proxy
+  - Password=mypin          # optional — locks the web UI behind a PIN
+```
+
+Then restart: `docker compose up -d`
+
+### Option C — Edit the config file directly
+
+Edit `config/appsettings.json` on the server:
+
+```json
+{
+  "Url": "https://church.rockrms.com",
+  "Id": "da0BJR0Bpz",
+  "Name": "Office Proxy"
+}
+```
+
+The container detects file changes and reconnects automatically — no restart needed.
+
+---
+
+## Security / PIN protection
+
+The web UI can be protected by a PIN or password. Anyone who can reach port 8080 can view and change all settings, so you should enable this if the server is reachable outside your local network, or if you simply want an extra layer of protection.
+
+### Set a PIN via the web UI (recommended)
+
+1. Open the **Settings** tab and scroll to the **Security** section.
+2. Enter a PIN (any alphanumeric value — it does not have to be numeric) and confirm it.
+3. Click **Set PIN**. You will be redirected to a login screen immediately.
+4. After logging in, the PIN is stored in `config/appsettings.json`.
+
+To change or remove the PIN later, use the **Security** section in Settings — enter the current PIN, then either enter a new one or leave it blank to remove protection.
+
+### Set a PIN via environment variable
+
+Add `Password` to the `environment` block in `docker-compose.yml`:
+
+```yaml
+environment:
+  - Password=mypin
+```
+
+When a PIN is set this way it cannot be changed through the web UI — the Settings page will display a note pointing you back to `docker-compose.yml`. This is useful for automated deployments where you want the PIN locked to a fixed value.
+
+### Behavior notes
+
+| Situation | Effect |
+|---|---|
+| No PIN configured | Web UI is fully open — no login required |
+| PIN set via web UI | Login screen shown on every new browser session |
+| PIN set via env var | Login required; PIN cannot be changed via web UI |
+| Container restarts | In-memory sessions are cleared — users must log in again |
+| PIN changed | All active sessions are invalidated immediately |
+
+---
+
+## Web UI reference
+
+| Page | What it shows |
+|---|---|
+| **Dashboard** | Connection status (green/amber/grey), start time, time connected, total labels printed since start |
+| **Logs** | Live service log stream (last 250 entries), color-coded by level |
+| **Settings → Connection** | Rock server URL, Proxy ID, Proxy Name — saves to `config/appsettings.json` |
+| **Settings → Security** | Set, change, or remove the web UI PIN |
+
+The dashboard auto-refreshes every 2 seconds. The log panel refreshes every 3 seconds when visible.
+
+---
+
+## Rock server URL tips
+
+Use your **origin server URL** rather than your primary domain if your site sits behind a CDN (Cloudflare, Cloudfront, etc.). CDNs frequently do not forward WebSocket upgrade requests, causing the server to return a 400 instead of the expected 101 handshake. Your origin URL is typically something like `https://origin.yourdomain.com` or the direct IP/hostname of your web server.
+
+If you see this error in the logs it almost always means a CDN is in the way:
+```
+The server returned status code '400' when status code '101' was expected.
+```
+
+---
+
+## Finding your Proxy ID in Rock
+
+1. In Rock, go to **Admin Tools → Check-in → Cloud Print Proxies**
+2. Open or create a proxy device record
+3. Copy the **IdKey** (short encoded value like `da0BJR0Bpz`) or the full **Guid**
+4. Paste it into the Proxy ID field in this app's Settings tab
+
+---
+
+## Networking
+
+This container uses `network_mode: host` in `docker-compose.yml`. This means:
+
+- The container shares the host's network stack directly
+- **Port 8080** (web UI) is available on the host with no port mapping needed
+- The container can reach printers at their local IP addresses (e.g. `192.168.1.50:9100`)
+
+> **Why host networking?** Printers use raw TCP sockets on port 9100. In standard Docker bridge networking the container gets its own IP and may not be able to reach devices on your local subnet. Host mode eliminates that problem entirely on Linux.
+
+> **Firewall note:** If your server runs `ufw`, open port 8080:
+> ```bash
+> sudo ufw allow 8080/tcp
+> ```
+
+---
+
+## TrueNAS SCALE deployment
+
+TrueNAS SCALE 25.10 can run this container directly from Docker Hub using the **Install via YAML** path in the Apps section.
+
+### 1. Create a dataset for persistent settings
+
+In TrueNAS → **Datasets**, create a new dataset:
+
+- **Name:** `rock-cloudprint` (under your pool, e.g. `tank/rock-cloudprint`)
+- **Path on disk:** `/mnt/tank/rock-cloudprint`
+
+No files need to be created inside the dataset — the app creates `appsettings.json` automatically when you save settings via the web UI.
+
+### 2. Install via YAML
+
+1. Go to **Apps → Discover**
+2. Click the **⋮** (three-dot) menu in the top right → **Install via YAML**
+3. Give the app a name (e.g. `rock-cloudprint`) and paste the compose YAML below
+4. Click **Save**
+
+```yaml
+services:
+  rock-cloudprint:
+    image: asdfinit/rock-cloudprint:latest
+    network_mode: host
+    volumes:
+      - /mnt/tank/rock-cloudprint:/app/config
+    restart: unless-stopped
+    # environment:
+    #   - Url=https://origin.church.com
+    #   - Id=da0BJR0Bpz
+    #   - Name=Office Proxy
+    #   - Password=mypin
+```
+
+> Adjust the host path if your dataset is under a different pool or name.
+
+### 3. Configure
+
+Once the app starts, open `http://<truenas-ip>:8080`, go to **Settings**, and fill in your Rock server URL and Proxy ID. Click **Save & Reconnect**.
+
+Settings are written to `/mnt/tank/rock-cloudprint/appsettings.json` on the TrueNAS host and survive container restarts and updates.
+
+---
+
+## Printer addressing
+
+Printers are addressed from Rock, not from this app. In Rock's check-in printer configuration, set the printer address to the printer's local IP (and optional port):
+
+- `192.168.1.50` — uses default port 9100
+- `192.168.1.50:9100` — explicit port
+
+The proxy forwards data to whatever IP:port Rock specifies in the print job.
+
+---
+
+## Common commands
+
+```bash
+# First-time build + start
+docker compose up -d --build
+
+# Start (after a stop, or after editing docker-compose.yml)
+docker compose up -d
+
+# Restart the container (same as the Restart button in the web UI)
+docker compose restart
+
+# View live logs
+docker compose logs -f
+
+# Stop
+docker compose down
+
+# Rebuild after a code update
+docker compose up -d --build --force-recreate
+
+# Check container status
+docker compose ps
+```
+
+---
+
+## Updating
+
+When a new version is available:
+
+```bash
+git pull                              # or copy updated files to the server
+docker compose up -d --build --force-recreate
+```
+
+Your settings in `config/appsettings.json` are stored outside the container and are unaffected by updates.
+
+---
+
+## Troubleshooting
+
+**Dashboard shows "Connecting…" and never goes green**
+- Verify the Rock Server URL is correct and reachable from the server (`curl https://church.rockrms.com`)
+- Check that the Proxy ID matches the device record in Rock exactly
+- Check logs: `docker compose logs -f`
+
+**Dashboard shows "Not configured"**
+- No URL or ID has been set yet. Go to the Settings tab.
+
+**Print jobs arrive (labels count increments) but nothing prints**
+- The printer IP or port in Rock's device record is wrong or unreachable
+- Test reachability from the server: `nc -zv 192.168.1.50 9100`
+- Make sure the printer is on and on the same network as this server
+
+**Port 8080 not accessible from browser**
+- Check the firewall: `sudo ufw status`
+- Allow the port: `sudo ufw allow 8080/tcp`
+
+**Container won't start**
+- Run `docker compose up` (without `-d`) to see startup errors in the terminal
+
+**Settings saved via web UI don't survive a container restart**
+- Make sure the `config/` directory exists on the host before starting
+- The volume mount in `docker-compose.yml` mounts `./config` to `/app/config` — the directory must exist at startup
+
+---
+
+## What changed from the original Windows app
+
+The upstream Rock Cloud Print is a Windows-only application with two parts:
+
+| Original | This version |
+|---|---|
+| Windows Service (background process) | Docker container (Linux) |
+| WPF desktop GUI | Browser-based web UI on port 8080 |
+| Named pipe IPC between GUI and service | REST API (`/api/status`, `/api/settings`) |
+| Settings via Windows installer wizard | Settings via web UI or `config/appsettings.json` |
+| EventLog / Windows Event Viewer logging | stdout / `docker compose logs` |
+| Single-file Windows executable | Multi-stage Docker image |
+
+The core proxy logic — WebSocket connection to Rock, raw TCP forwarding to printers — is unchanged from the upstream source.
+
+### Source changes
+
+| File | What changed |
+|---|---|
+| `Rock.CloudPrint.Service/Rock.CloudPrint.Service.csproj` | SDK changed from `Worker` to `Web`; removed Windows runtime identifier, single-file publish, and Windows-only packages |
+| `Rock.CloudPrint.Service/Program.cs` | Replaced Windows Service host with `WebApplication`; added REST API endpoints; removed Named Pipe and EventLog; added authentication middleware |
+| `Rock.CloudPrint.Service/CloudPrintOptions.cs` | Added `Password` property for PIN/password protection |
+| `Rock.CloudPrint.Service/AuthService.cs` | New — in-memory bearer token manager for web UI authentication |
+| `Rock.CloudPrint.Service/InMemoryLogSink.cs` | New — circular log buffer (250 entries) for the Logs panel |
+| `Rock.CloudPrint.Service/InMemoryLoggerProvider.cs` | New — `ILoggerProvider` that captures `Rock.CloudPrint.*` log entries only |
+| `Rock.CloudPrint.Service/appsettings.json` | Removed EventLog config; added `Urls: http://+:8080` and default empty keys |
+| `Rock.CloudPrint.Service/wwwroot/index.html` | New — single-page web UI (Dashboard, Logs, Settings with Security panel) |
+| `Rock.CloudPrint.Shared/Rock.CloudPrint.Shared.csproj` | Bumped `System.Text.Json` from `8.0.4` to `8.0.5` (CVE GHSA-8g4q-xg66-9fp4) |
+| `Dockerfile` | New — multi-stage Linux build; pre-creates `/app/config` directory |
+| `docker-compose.yml` | New — host networking, `./config:/app/config` directory mount, `Password` env var option |
+| `config/appsettings.json` | New — persistent settings file (lives in host `config/` directory, mounted into container) |
+
+---
+
+## License
+
+This project is based on [Rock RMS](https://github.com/SparkDevNetwork/Rock) and is licensed under the [Rock Community License](http://www.rockrms.com/license).

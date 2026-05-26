@@ -1,0 +1,14 @@
+# Build output
+**/bin/
+**/obj/
+
+# User secrets / runtime config
+# This file holds the live Rock server URL, proxy ID, and PIN.
+# It is volume-mounted into the container and should never be committed.
+config/appsettings.json
+
+# OS / editor junk
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
