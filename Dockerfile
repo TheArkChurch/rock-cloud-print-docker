@@ -34,6 +34,12 @@ COPY --from=build /app/publish .
 # permission issues on some hosts.
 RUN mkdir -p /app/config
 
+# Run as a non-root user (UID 1000 matches the host volume owner so the
+# config directory bind-mount remains writable without privilege escalation).
+RUN adduser --disabled-password --no-create-home --gecos '' --uid 1000 appuser \
+ && chown -R appuser /app
+USER appuser
+
 # Port the web UI listens on (also set in appsettings.json "Urls").
 EXPOSE 8080
 
