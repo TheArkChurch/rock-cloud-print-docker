@@ -40,6 +40,9 @@ public class Program
         builder.Services.AddSingleton<AuthService>();
         builder.Services.AddHostedService<ProxyWorker>();
 
+        // Rate limit /api/auth/login to 5 attempts per minute per source.
+        // Excess attempts return HTTP 429 with no queue, blocking PIN brute-force
+        // attacks against the web UI without affecting normal interactive logins.
         builder.Services.AddRateLimiter( options =>
         {
             options.RejectionStatusCode = 429;
@@ -52,6 +55,8 @@ public class Program
             } );
         } );
 
+        // Suppress the default "Server: Kestrel" response header so the
+        // service does not advertise its underlying web stack to clients.
         builder.WebHost.ConfigureKestrel( o => o.AddServerHeader = false );
 
         // Persistent user settings are stored in the config sub-directory so
@@ -64,6 +69,15 @@ public class Program
         app.UseRateLimiter();
 
         // ── Security headers ───────────────────────────────────────
+        // Applied to every response (including static files). The CSP
+        // permits the Tailwind CDN script because the SPA currently loads
+        // Tailwind from cdn.tailwindcss.com — switching to a bundled copy
+        // would let us tighten this further.
+        //   X-Frame-Options:        defence against clickjacking embed
+        //   X-Content-Type-Options: disables MIME-type sniffing
+        //   Referrer-Policy:        prevents Rock URL leakage via Referer
+        //   Cache-Control:          stops sensitive pages from being cached
+        //   Content-Security-Policy:restricts what the page may load/run
         app.Use( async ( ctx, next ) =>
         {
             ctx.Response.Headers["X-Frame-Options"]        = "DENY";
@@ -130,7 +144,7 @@ public class Program
                 return Results.Json( new { error = "Incorrect PIN or password." }, statusCode: 401 );
 
             return Results.Ok( new { token = auth.IssueToken() } );
-        } ).RequireRateLimiting( "login" );
+        } ).RequireRateLimiting( "login" );  // brute-force protection
 
         // Revokes the caller's bearer token.
         app.MapPost( "/api/auth/logout", ( HttpContext ctx, AuthService auth ) =>

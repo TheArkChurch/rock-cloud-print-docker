@@ -134,7 +134,21 @@ The container detects file changes and reconnects automatically — no restart n
 
 ---
 
-## Security / PIN protection
+## Security
+
+### Built-in hardening
+
+The container ships with several baseline protections that are always on:
+
+| Layer | What it does |
+|---|---|
+| **Login rate limit** | `/api/auth/login` is capped at 5 attempts per minute. Excess attempts return HTTP 429. Protects the PIN from brute-force attacks. |
+| **Security headers** | Every response sets `X-Frame-Options: DENY`, `X-Content-Type-Options: nosniff`, `Referrer-Policy: no-referrer`, `Cache-Control: no-store`, and a `Content-Security-Policy` that restricts script/style/image sources. |
+| **Server header suppression** | The `Server: Kestrel` response header is disabled so the underlying stack is not advertised. |
+| **Non-root runtime** | The container runs as `appuser` (UID 1000) rather than root. The UID is chosen to match the typical host volume owner so the `./config` bind mount stays writable without privilege escalation. |
+| **Bearer tokens in `sessionStorage`** | The web UI stores its auth token in `sessionStorage` (cleared when the tab closes) rather than `localStorage`. |
+
+### PIN protection
 
 The web UI can be protected by a PIN or password. Anyone who can reach port 8080 can view and change all settings, so you should enable this if the server is reachable outside your local network, or if you simply want an extra layer of protection.
 
