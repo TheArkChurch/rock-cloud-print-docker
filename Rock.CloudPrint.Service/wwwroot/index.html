@@ -291,7 +291,7 @@
 
     <script>
         // ── Auth state ────────────────────────────────────────────────────
-        let authToken     = localStorage.getItem( 'rock-cp-token' ) || '';
+        let authToken     = sessionStorage.getItem( 'rock-cp-token' ) || '';
         let authRequired  = false;
         let appInitialized = false;
 
@@ -303,7 +303,7 @@
             const resp = await fetch( url, { ...opts, headers } );
             if ( resp.status === 401 ) {
                 authToken = '';
-                localStorage.removeItem( 'rock-cp-token' );
+                sessionStorage.removeItem( 'rock-cp-token' );
                 showLoginOverlay();
                 throw new Error( 'Unauthorized' );
             }
@@ -343,7 +343,7 @@
 
                 const data = await resp.json();
                 authToken = data.token || '';
-                if ( authToken ) localStorage.setItem( 'rock-cp-token', authToken );
+                if ( authToken ) sessionStorage.setItem( 'rock-cp-token', authToken );
                 hideLoginOverlay();
                 document.getElementById( 'logout-btn' ).classList.remove( 'hidden' );
 
@@ -363,7 +363,7 @@
                 await fetch( '/api/auth/logout', { method: 'POST', headers } );
             } catch ( _ ) {}
             authToken = '';
-            localStorage.removeItem( 'rock-cp-token' );
+            sessionStorage.removeItem( 'rock-cp-token' );
             showLoginOverlay();
         }
 
@@ -605,7 +605,7 @@
                     // PIN just set — force login with the new PIN.
                     authToken    = '';
                     authRequired = true;
-                    localStorage.removeItem( 'rock-cp-token' );
+                    sessionStorage.removeItem( 'rock-cp-token' );
                     document.getElementById( 'logout-btn' ).classList.remove( 'hidden' );
                     showLoginOverlay();
                 } else {
@@ -638,14 +638,14 @@
                         // PIN removed — no longer required.
                         authToken    = '';
                         authRequired = false;
-                        localStorage.removeItem( 'rock-cp-token' );
+                        sessionStorage.removeItem( 'rock-cp-token' );
                         document.getElementById( 'logout-btn' ).classList.add( 'hidden' );
                         showPinMsg( 'pin-msg-change', 'success', 'PIN removed. Protection is now disabled.' );
                         loadSecuritySection();
                     } else {
                         // PIN changed — all sessions invalidated, must re-login.
                         authToken = '';
-                        localStorage.removeItem( 'rock-cp-token' );
+                        sessionStorage.removeItem( 'rock-cp-token' );
                         showLoginOverlay();
                     }
                 } else {

@@ -16,6 +16,8 @@
 //
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using System.Threading.RateLimiting;
+using Microsoft.AspNetCore.RateLimiting;
 
 using Microsoft.Extensions.Options;
 
@@ -38,12 +40,43 @@ public class Program
         builder.Services.AddSingleton<AuthService>();
         builder.Services.AddHostedService<ProxyWorker>();
 
+        builder.Services.AddRateLimiter( options =>
+        {
+            options.RejectionStatusCode = 429;
+            options.AddFixedWindowLimiter( "login", o =>
+            {
+                o.PermitLimit = 5;
+                o.Window = TimeSpan.FromMinutes( 1 );
+                o.QueueProcessingOrder = QueueProcessingOrder.OldestFirst;
+                o.QueueLimit = 0;
+            } );
+        } );
+
+        builder.WebHost.ConfigureKestrel( o => o.AddServerHeader = false );
+
         // Persistent user settings are stored in the config sub-directory so
         // operators can bind-mount an entire directory (e.g. a TrueNAS dataset
         // or a host folder) rather than a single file.
         builder.Configuration.AddJsonFile( "config/appsettings.json", optional: true, reloadOnChange: true );
 
         var app = builder.Build();
+
+        app.UseRateLimiter();
+
+        // ── Security headers ───────────────────────────────────────
+        app.Use( async ( ctx, next ) =>
+        {
+            ctx.Response.Headers["X-Frame-Options"]        = "DENY";
+            ctx.Response.Headers["X-Content-Type-Options"] = "nosniff";
+            ctx.Response.Headers["Referrer-Policy"]        = "no-referrer";
+            ctx.Response.Headers["Cache-Control"]          = "no-store";
+            ctx.Response.Headers["Content-Security-Policy"] =
+                "default-src 'self'; " +
+                "script-src 'self' https://cdn.tailwindcss.com 'unsafe-inline'; " +
+                "style-src 'self' 'unsafe-inline'; " +
+                "img-src 'self' data:;";
+            await next();
+        } );
 
         app.UseDefaultFiles();
         app.UseStaticFiles();
@@ -97,7 +130,7 @@ public class Program
                 return Results.Json( new { error = "Incorrect PIN or password." }, statusCode: 401 );
 
             return Results.Ok( new { token = auth.IssueToken() } );
-        } );
+        } ).RequireRateLimiting( "login" );
 
         // Revokes the caller's bearer token.
         app.MapPost( "/api/auth/logout", ( HttpContext ctx, AuthService auth ) =>
