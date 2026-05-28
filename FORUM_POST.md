@@ -1,11 +1,11 @@
 # Forum Post Draft — community.rockrms.com
 
 **Suggested category:** Dev Talk → Plugins & Extensions  
-**Suggested title:** Run Rock Cloud Print in a Docker Container (Linux / Raspberry Pi) — Community Build
+**Suggested title:** Run Rock Cloud Print in a Docker Container (Linux / Raspberry Pi / NAS) — Community Build
 
 ---
 
-## Run Rock Cloud Print in a Docker Container (Linux / Raspberry Pi)
+## Run Rock Cloud Print in a Docker Container (Linux / Raspberry Pi / NAS )
 
 Hey Rock community! 👋
 
@@ -123,8 +123,9 @@ sudo systemctl enable rock-cloudprint
 
 ### Where to find it
 
-Docker Hub: **https://hub.docker.com/r/asdfinit/rock-cloudprint**
-
+Docker Hub: **https://hub.docker.com/r/asdfinit/rock-cloudprint**  
+Git Hub: **https://github.com/TheArkChurch/rock-cloud-print-docker**  
+  
 The README has a full admin guide covering prerequisites, quick start, configuration, troubleshooting, CDN tips, and all of the above. Happy to answer questions here or in the repo.
 
 ---
