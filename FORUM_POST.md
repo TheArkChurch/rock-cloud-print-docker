@@ -23,7 +23,7 @@ Rock Cloud Print is a lightweight proxy that sits between your Rock server and l
 Rock Server  ──WebSocket──▶  This container  ──TCP:9100──▶  Local Zebra/TSC Printer
 ```
 
-The official Windows app handles this perfectly — this Docker version does the exact same thing, but runs headlessly on any Linux box. We run it on a Raspberry Pi 4 that sits in our server room alongside our check-in station switches.
+The official Windows app handles this perfectly — this Docker version does the exact same thing, we repackaged it to run headlessly on any Linux box. We run it on Raspberry Pi's 4/5 that we already had(a few of them). It will also work on most NAS systems who support containers.
 
 ---
 
@@ -51,7 +51,7 @@ That's it. No .NET SDK, no Visual Studio, no Windows.
 
 ---
 
-### Getting set up
+### Getting set up Linux:
 
 **1. Install Docker** (if not already installed):
 ```bash
@@ -70,6 +70,8 @@ docker compose up -d --build
 **4. Check the Dashboard.** You should see a green "Connected" dot within a few seconds.
 
 ---
+
+### For other instalation methods see the docker hub repo.
 
 ### A few tips we learned the hard way
 
@@ -127,6 +129,6 @@ The README has a full admin guide covering prerequisites, quick start, configura
 
 ---
 
-Would love to hear if anyone else has a setup like this or if there's a better community-maintained solution I've missed!
+Would love to hear if anyone else has a setup like this or has any idea for improvements(I have a few ideas)
 
 — Jonathan / The Ark Church
