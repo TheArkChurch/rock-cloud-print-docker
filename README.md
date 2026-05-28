@@ -212,9 +212,9 @@ The server returned status code '400' when status code '101' was expected.
 
 1. In Rock, go to **Admin Tools → Check-in → Devices**
 2. Open or create a proxy device device
-3. Copy the **IdKey** (short encoded value like `da0BJR0Bpz`) or the full **Guid**
-  a. tip when viewing the device page, click the 3 dot menu in the top right - just below your account image
-  b. click the `Id` label, it will cycle through, Id, Guid, IdKey
+3. Copy the **IdKey** (short encoded value like `da0BJR0Bpz`) or the full **Guid**  
+  a. tip when viewing the device page, click the 3 dot menu in the top right - just below your account image  
+  b. click the `Id` label, it will cycle through, Id, Guid, IdKey  
 5. Paste it into the Proxy ID field in this app's Settings tab
 
 ---
